@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<package>
+    <name>YeahCommerce_Catalog_Sync_Extension</name>
+    <version>1.0.17</version>
+    <stability>stable</stability>
+    <license>GNU General Public License (GPL)</license>
+    <channel>community</channel>
+    <extends/>
+    <summary>Automatic synchronization of Magento product catalog with Yeah!Commerce service</summary>
+    <description>Yeah!Commerce: Mobile and Social storefront for your Online Store&#xD;
+ Expand your ecommerce to mobile and social sales with ease&#xD;
+&#xD;
+This module allows you to synchronize your product catalog with your Yeah!Commerce account.&#xD;
+ Integration includes synchronization between your shop and your Yeah!Commerce apps:&#xD;
+&#xD;
+- Categories&#xD;
+ - Category Images&#xD;
+ - Products&#xD;
+ - Products availability&#xD;
+ - Product Images&#xD;
+ - Product Info&#xD;
+ - Product Prices&#xD;
+&#xD;
+Yeah!Commerce service provides shop owners ability to create and automatically handle mobile and social apps.&#xD;
+&#xD;
+- Storefront goes mobile and social with one click&#xD;
+ - Simply install and start selling more&#xD;
+ - Works with Magento like a charm&#xD;
+ - Products in your CMS will automatically streamline to mobile and social storefront&#xD;
+&#xD;
+With Yeah!Commerce you get apps on:&#xD;
+ - iPhone&#xD;
+ - iPad&#xD;
+ - Android Phone&#xD;
+ - Android Tablet&#xD;
+ - Facebook&#xD;
+&#xD;
+You can find more info at http://yeahcommerce.com&#xD;
+ If you have any questions feel free to contact Yeah!Commerce support at mail@yeahcommerce.com</description>
+    <notes>Version: 1.0.17&#xD;
+ Stability: Stable&#xD;
+ Notes: This module allows you to synchronize your product catalog with your Yeah!Commerce account.&#xD;
+ Integration includes synchronization between your shop and your Yeah!Commerce apps:&#xD;
+&#xD;
+- Categories&#xD;
+ - Category Images&#xD;
+ - Products&#xD;
+ - Products availability&#xD;
+ - Product Images&#xD;
+ - Product Info&#xD;
+ - Product Prices&#xD;
+ New in version 1.0.17:&#xD;
+ - Version Stability fixed to 'Stable'</notes>
+    <authors><author><name>Boris Udachin</name><user>yeahcommerce</user><email>mail@yeahcommerce.com</email></author><author><name>Ilya Savinkov</name><user>Ilya_Savinkov</user><email>ilya.s@144mln.com</email></author><author><name>Anton Fedorov</name><user>afedorov42</user><email>afedorov42@gmail.com</email></author></authors>
+    <date>2013-09-10</date>
+    <time>06:47:13</time>
+    <contents><target name="magecommunity"><dir name="YeahCommerce"><dir name="Sync"><dir name="Block"><file name="Lastchange.php" hash="e129e84293e56bff51fd7343cdd0431e"/></dir><dir name="Helper"><file name="Data.php" hash="1122ba5bb3664ac0ec269eac2303b49e"/></dir><dir name="Model"><file name="Mobile_Detect.php" hash="c7612e9fe3ed9c72b0f40a91ebf423ab"/><file name="Observer.php" hash="f747c0d2fed93bdb4d43f1408c676e0d"/></dir><dir name="controllers"><file name="IndexController.php" hash="4add1d07b57f4b84b02be92331d9ec37"/></dir><dir name="etc"><file name="config.xml" hash="351a42e064644e9335db86eb3ab91459"/><file name="system.xml" hash="b885b82688e14949e0a6a3fe4ed05d16"/></dir></dir></dir></target><target name="mageetc"><dir name="modules"><file name="YeahCommerce_Sync.xml" hash="96e137d8bb2a0bb9111608aa3ed8af09"/></dir></target></contents>
+    <compatible/>
+    <dependencies><required><php><min>5.3.0</min><max>6.0.0</max></php><extension><name>zlib</name><min>1.0.9</min><max>/</max></extension><extension><name>curl</name><min/><max/></extension></required></dependencies>
+</package>
