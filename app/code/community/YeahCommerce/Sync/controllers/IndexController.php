@@ -5,6 +5,8 @@ class YeahCommerce_Sync_IndexController extends Mage_Core_Controller_Front_Actio
 	const MODULE_TYPE = 'magento';
 	const DELETED_PRODUCTS_INFO = 'Deleted_Products_Info.gz';
 
+	var $quoteId;
+
 	/**
 	 * Checking KEY
 	 * @return Mage_Core_Controller_Front_Action|void
@@ -44,8 +46,15 @@ class YeahCommerce_Sync_IndexController extends Mage_Core_Controller_Front_Actio
 		}elseif(isset($_GET['categories'])){
 			$this->categoriesAction();
 		}elseif(isset($_GET['order'])){
+            // $this->prepareAction();
             $this->orderAction();
 			return;
+		}elseif(isset($_GET['shippings'])){
+			$this->getShippingMethodsAction();
+		}elseif(isset($_GET['countries'])){
+			$this->getCountries();
+		}elseif(isset($_GET['paypal'])){
+			$this->paypalRedirect();
 		}else{
 			$response = array(
 				'module' => self::MODULE_TYPE,
@@ -57,11 +66,189 @@ class YeahCommerce_Sync_IndexController extends Mage_Core_Controller_Front_Actio
 		}
 	}
 
-	public function orderAction(){
-		$order = $_POST['order'];
-		echo Mage::getUrl('sync') .'?createOrder&orderData='.urlencode($order);
+    public function orderAction(){
+            $order = $_POST['order'];
+            echo Mage::getUrl('sync') .'?createOrder&orderData='.urlencode($order);
+    }
+
+    public function createOrderAction(){
+            $order = json_decode($_GET['orderData']);
+            try{
+                    $this->_addProductsToCart($order);
+            }catch (Exception $e){
+                    print_r($e->getMessage());
+            }
+
+            $this->_redirect('checkout/cart');
+    }
+
+    /**
+     * Adds order into guest user cart and returns SID=session pair for login into the cart
+     * @param array $products
+     * @return string "SID=sessionid"
+     */
+    private function _createOrder($products){
+            $cart = Mage::getSingleton('checkout/cart', array('name' => 'frontend'));
+            $cart->init();
+            /*foreach( $session->getQuote()->getItemsCollection() as $item ){
+                    $cart->removeItem($item->getId());
+            }*/
+
+            foreach($products as $one){
+                    $product = Mage::getModel('catalog/product');
+                    //$product->setStoreId(Mage::app()->getStore()->getId());
+                    $id = $product->getIdBySku($one->sku);
+                    $product->load($id);
+                    $qty = Mage::getModel('cataloginventory/stock_item')->loadByProduct($id)->getQty();
+                    try{
+                            $cart->addProduct($product, array(
+                     'product' => $id,
+                     'qty' => min($one->count, $qty),
+                ));
+                    }catch (Exception $e){
+                            //print_r($e->getMessage());
+                            //exit;
+                    }
+            }
+            $cart->save();
+
+            /** @var $session Mage_Checkout_Model_Session */
+            $session = Mage::getSingleton('core/session', array('name' => 'frontend'));
+            $session->setCartWasUpdated(true);
+            return $session->getSessionIdQueryParam() .'='. $session->getSessionId();
+    }
+	public function prepareAction(){
+		$data = json_decode($_REQUEST['order']);
+		// var_dump($data);
+
+		if(!$data){
+			header("HTTP/1.0 400 Bad Request");
+			die('{error:400}');
+		}
+
+		$billing_address = $data[0]->billing;
+		$shippings = $data['shipping_methods'];
+		$payments = $data['payments_methods'];
+		$ccsave = ($data['method_id'] == 'ccsave') ? $data['ccsave'] : null;
+		$items = $data[0]->items;
+		$session = $this->_addProductsToCart($items);
+		$quoteId = $this->prepareOrder($billing_address, '');
+		if (!$quoteId){
+			header("HTTP/1.0 400 Bad Request");
+			die('{error:400}');
+		}
+		$orderId = $this->createOrder($quoteId, '','');
+
+		if (!$orderId){
+			header("HTTP/1.0 400 Bad Request");
+			die('{error:400}');
+		}
 	}
 
+	public function paypalRedirect(){
+		if (!$_REQUEST['return'] || !$_REQUEST['cancel_return']){
+			header("HTTP/1.0 400 Bad Request");
+			die('{error:400}');			
+		}
+        $standard = Mage::getModel('paypal/standard');
+        $form = new Varien_Data_Form();
+        $form->setAction($standard->getConfig()->getPaypalUrl())
+            ->setId('paypal_standard_checkout')
+            ->setName('paypal_standard_checkout')
+            ->setMethod('POST')
+            ->setUseContainer(true);
+        foreach ($standard->getStandardCheckoutFormFields() as $field=>$v) {
+        	switch ($field) {
+        		case 'return':
+        			$value = $_REQUEST['return'];
+        			break;
+        		case 'cancel_return':
+        			$value = $_REQUEST['cancel_return'];
+        			break;
+        		
+        		default:
+        			$value = $v;
+        			break;
+        	}        		
+        	$form->addField($field, 'hidden', array('name'=>$field, 'value'=>$value));        		
+        }
+        $idSuffix = Mage::helper('core')->uniqHash();
+        $submitButton = new Varien_Data_Form_Element_Submit(array(
+            'value'    => $this->__('Click here if you are not redirected within 10 seconds...'),
+        ));
+        $id = "submit_to_paypal_button_{$idSuffix}";
+        $submitButton->setId($id);
+        $form->addElement($submitButton);
+        $html = '<html><body>';
+        $html.= $this->__('You will be redirected to the PayPal website in a few seconds.');
+        $html.= $form->toHtml();
+        $html.= '<script type="text/javascript">document.getElementById("paypal_standard_checkout").submit();</script>';
+        $html.= '</body></html>';
+
+        echo $html;
+	}
+
+	// $email, $billing_address, $shipping_address, $shipping_method
+	/**
+	 * @todo Shipping rate for configurable
+	 */
+	public function prepareOrder($addressData, $shipping){
+		$shippingAddress = array(
+			'firstname' => $addressData->firstName,
+			'lastname' => $addressData->lastName,
+			'email' => $addressData->email,
+			'street' => array(
+				'0' => $addressData->addressLine1,
+				'1' => $addressData->addressLine2,
+			),
+			'city' => $addressData->city,
+			// 'region_id' => $addressData->regionId,
+			'region' => $addressData->region,
+			'postcode' => $addressData->zipcode,
+			'country_id' => $addressData->country,
+			'telephone' => $addressData->phone,
+		);
+		// create quote
+		$quoteObj = Mage::getModel('sales/quote');
+		$quoteObj->setIsMultiShipping(false);
+		$quoteObj->setCheckoutMethod('guest');
+		$quoteObj->setCustomerId(null);
+		$quoteObj->setCustomerEmail($email);
+		$quoteObj->setCustomerIsGuest(true);
+		$quoteObj->setCustomerGroupId(Mage_Customer_Model_Group::NOT_LOGGED_IN_ID);
+
+		// set store
+		$quoteObj->setStore(Mage::app()->getStore());
+		// add products to quote
+		$quoteItem = null;
+		$cart_items = Mage::getSingleton('checkout/cart')->getQuote()->getAllVisibleItems();
+		foreach($cart_items as $item) {
+            $newItem = clone $item;
+            $quoteObj->addItem($newItem);
+            if ($item->getHasChildren()) {
+                foreach ($item->getChildren() as $child) {
+                    $newChild = clone $child;
+                    $newChild->setParentItem($newItem);
+                    $quoteObj->addItem($newChild);
+                }
+            }
+		}
+		// addresses
+		$quoteShippingAddress = new Mage_Sales_Model_Quote_Address();
+		$quoteShippingAddress->setData($shippingAddress);
+		$quoteBillingAddress = new Mage_Sales_Model_Quote_Address();
+		$quoteBillingAddress->setData($shippingAddress);
+		$quoteObj->setShippingAddress($quoteShippingAddress);
+		$quoteObj->setBillingAddress($quoteBillingAddress);
+		// shipping method an collect
+		$quoteObj->getShippingAddress()->setShippingMethod('flatrate_flatrate');
+		$quoteObj->getShippingAddress()->setCollectShippingRates(true);
+		$quoteObj->collectTotals();	// calls $address->collectTotals();
+		$quoteObj->save();
+		$this->quoteId = $quoteObj->getId();
+		return $quoteObj->getId();
+	}
+	
 	/**
 	 * Gets a product associated with given configurable product by given params
 	 * @param integer $id
@@ -92,15 +279,180 @@ class YeahCommerce_Sync_IndexController extends Mage_Core_Controller_Front_Actio
 		return $result;
 	}
 
-	public function createOrderAction(){
-		$order = json_decode($_GET['orderData']);
-		try{
-			$this->_createOrder($order);
-		}catch (Exception $e){
-			print_r($e->getMessage());
+	public function createOrder($quoteId, $paymentMethod, $paymentData) 
+	{
+		$quoteObj = Mage::getModel('sales/quote')->load($quoteId); // Mage_Sales_Model_Quote
+		$items = $quoteObj->getAllItems();
+		$quoteObj->reserveOrderId();
+
+		$paymentMethod = 'checkmo';
+	      // set payment method 
+		$quotePaymentObj = $quoteObj->getPayment(); // Mage_Sales_Model_Quote_Payment
+		$quotePaymentObj->setMethod($paymentMethod);
+		$quoteObj->setPayment($quotePaymentObj);
+		  
+		// convert quote to order
+		$convertQuoteObj = Mage::getSingleton('sales/convert_quote');
+
+		if($quoteObj->isVirtual() == 0) {
+		  $orderObj = $convertQuoteObj->addressToOrder($quoteObj->getShippingAddress());
+		} else {
+		  $orderObj = $convertQuoteObj->addressToOrder($quoteObj->getBillingAddress());
 		}
 
-		$this->_redirect('checkout/cart');
+		$orderPaymentObj = $convertQuoteObj->paymentToOrderPayment($quotePaymentObj);
+		
+		// convert quote addresses
+		$orderObj->setBillingAddress($convertQuoteObj->addressToOrderAddress($quoteObj->getBillingAddress()));
+		if($quoteObj->isVirtual() == 0) {
+		  $orderObj->setShippingAddress($convertQuoteObj->addressToOrderAddress($quoteObj->getShippingAddress()));
+		}
+		// set payment options
+		$orderObj->setPayment($convertQuoteObj->paymentToOrderPayment($quoteObj->getPayment()));
+		if ($paymentData) {
+		$orderObj->getPayment()->setCcNumber($paymentData->ccNumber);
+		$orderObj->getPayment()->setCcType($paymentData->ccType);
+		$orderObj->getPayment()->setCcExpMonth($paymentData->ccExpMonth);
+		$orderObj->getPayment()->setCcExpYear($paymentData->ccExpYear);
+		$orderObj->getPayment()->setCcLast4(substr($paymentData->ccNumber,-4));
+		}
+		// convert quote items
+		foreach ($items as $item) {
+			// @var $item Mage_Sales_Model_Quote_Item
+			$orderItem = $convertQuoteObj->itemToOrderItem($item);
+			if ($item->getParentItem()) {
+				$orderItem->setParentItem($orderObj->getItemByQuoteItemId($item->getParentItem()->getId()));
+			}
+			$orderObj->addItem($orderItem);
+		}
+		
+		$orderObj->setCanShipPartiallyItem(false);
+	  
+		try {
+			$orderObj->place();
+		} catch (Exception $e){	    
+			Mage::log($e->getMessage());
+			Mage::log($e->getTraceAsString());
+		}
+		
+		$orderObj->save(); 
+		$orderObj->sendNewOrderEmail(); 
+		Mage::getSingleton('checkout/session')->setLastOrderId($orderObj->getId())
+                ->setLastRealOrderId($orderObj->getIncrementId());
+		return $orderObj->getId();
+		unset ($orderObj, $quoteObj);
+	}
+
+	public function getCountries(){
+		$countries = Mage::getSingleton('directory/country')->getResourceCollection()
+                ->loadByStore()->toOptionArray();
+        array_shift($countries);
+        foreach ($countries as $key => $country) {
+        	$regions = Mage::getModel('directory/region')->getResourceCollection()
+                ->addCountryFilter($country['value'])
+                ->load()->toOptionArray();
+            if ($regions){
+            	array_shift($regions);
+            	foreach ($regions as $i => $region) {
+            		$countries[$key]['regions'][$i]['value'] = $region['value'];
+            		$countries[$key]['regions'][$i]['label'] = $region['label'];            		
+            	}
+            }else{
+            	$countries[$key]['regions'] = array();
+            }
+        }
+        echo json_encode($countries);
+	}
+	/**
+	 * Returns json-encoded array of available shipping methods with prices
+	 * @param array $addressData
+	 * @return string
+	 */
+	public function getShippingMethodsAction(){
+		if (!$_POST['zipcode'] || !$_POST['country']){			
+			header("HTTP/1.0 400 Bad Request");
+			die('{error:400}');
+		}
+		$addressData['zipcode'] = $_POST['zipcode'];
+		$addressData['region'] = $_POST['region'];
+		$addressData['city'] = $_POST['city'];
+		$addressData['country_id'] = $_POST['country'];
+
+		$session = Mage::getSingleton('checkout/session');
+		$address = $session->getQuote()->getShippingAddress()->addData($addressData);
+
+     	$currencySym = Mage::app()->getLocale()->currency(Mage::app()->getStore()->getCurrentCurrencyCode())->getSymbol();
+
+	    $rates = $address->setCollectShippingRates(true)->collectShippingRates()->getGroupedAllShippingRates();
+	    $i = 0;
+	    foreach ($rates as $code => $carrier) {
+	    	$title = Mage::getStoreConfig('carriers/'.$code.'/title');
+	    	$shipMethods[$i]["label"] = $title;
+	    	$shipMethods[$i]["id"] = $code;
+	    	$j = 0;
+	        foreach ($carrier as $rate) {
+	            // $shipMethods[$i]["rates"][] = array(
+	            // 	"cost" => $currencySym.$rate->getPrice(),
+	            // 	"label" => $rate->getMethodTitle()
+	            // 	);
+	            $shipMethods[$i]["rates"][$j]["cost"] = $currencySym.$rate->getPrice();
+	            $shipMethods[$i]["rates"][$j]["label"] = $rate->getMethodTitle();
+	            $j++;
+            }
+            $i++;
+        }
+        $paymentObj = Mage::getSingleton('payment/config');
+		$payments = $paymentObj->getActiveMethods();
+      	$payMethods = array();
+      	$i = 0;
+       	foreach ($payments as $paymentCode => $paymentModel) {
+       		if($paymentModel->canUseCheckout() == 1 
+       			&& $paymentCode != 'free'
+       			&& $paymentCode != 'checkmo'
+       			&& $paymentCode != 'banktransfer'
+       			&& $paymentCode != 'cashondelivery'
+       			&& $paymentCode != 'googlecheckout'){
+
+	       		$cctypes = $paymentObj->getCcTypes();
+	       		$cardTypes = array();
+	            $availableTypes = $paymentModel->getConfigData('cctypes');
+	            if ($availableTypes) {
+	                $availableTypes = explode(',', $availableTypes);
+	                foreach ($cctypes as $code => $name) {
+	                    if (in_array($code, $availableTypes)) {
+	                        $cardTypes[] = array(
+	                        	'id' => $code,
+	                        	'label' => $name
+                        	);
+	                    }
+	                }            
+	        	}
+
+	        	$paymentTitle = Mage::getStoreConfig('payment/'.$paymentCode.'/title');
+	        	$useccv = Mage::getStoreConfig('payment/'.$paymentCode.'/useccv');
+	            $payMethods[$i++] = array(
+	            	'id' => $paymentCode,
+	                'label' => $paymentTitle,
+	                'useccv' => ($useccv) ? true : false,
+	                'cctypes' => $cardTypes
+	            );       			
+       		}
+        }
+        $result = array();
+        if (!$shipMethods || !$payMethods){        	
+			header("HTTP/1.0 400 Bad Request");
+			die('{error:400}');
+        }
+        else{
+        	$result['shippings'] = $shipMethods;
+        	$result['payments'] = $payMethods;
+        }
+	    echo json_encode($result);
+	}
+
+	public function testAction(){
+		$this->prepareOrder();
+		$this->createOrder($this->quoteId);
 	}
 
 	/**
@@ -108,10 +460,13 @@ class YeahCommerce_Sync_IndexController extends Mage_Core_Controller_Front_Actio
 	 * @param array $products
 	 * @return string "SID=sessionid"
 	 */
-	private function _createOrder($products){
+	private function _addProductsToCart($products){
 		$cart = Mage::getSingleton('checkout/cart', array('name' => 'frontend'));
 		$cart->init();
 
+		if ($cart->getItemsCount()){
+			$cart->truncate();
+		}
 		foreach($products as $one){
 			$productModel = Mage::getModel('catalog/product');
 			$id = $productModel->getIdBySku($one->sku);
@@ -119,32 +474,34 @@ class YeahCommerce_Sync_IndexController extends Mage_Core_Controller_Front_Actio
 			$qty = Mage::getModel('cataloginventory/stock_item')->loadByProduct($id)->getQty();
 			$options = array();
 			$type = $product->getTypeId();
-			var_dump($type);
+			// var_dump($type);
             switch($type){
                 case Mage_Catalog_Model_Product_Type::TYPE_SIMPLE: // Simple product (with attributes)
-                	echo "SIMPLE!!!";
-					if($one->options){
-						foreach ($one->options as $opt => $value) {
-							$option_id = $this->_getCustomOptionId($product, $opt);
-							$option_value_id = $this->_getCustomOptionTypeId($product, $option_id, $value);
-							$options[$option_id] = $option_value_id;
-						}
-					}
+					// if($one->options){
+					// 	foreach ($one->options as $opt => $value) {
+					// 		$option_id = $this->_getCustomOptionId($product, $opt);
+					// 		$option_value_id = $this->_getCustomOptionTypeId($product, $option_id, $value);
+					// 		$options[$option_id] = $option_value_id;
+					// 	}
+					// }
 					break;
 				case Mage_Catalog_Model_Product_Type::TYPE_CONFIGURABLE:
-					echo "CONF!!!";
-					$conf = $this->_getAssociatedProductByAttributes($id,$one->options);
-					$id = $conf->getEntityId();
-					$product = $conf;
+			        $instance = $product->getTypeInstance(true);
+			        $associated_products = $instance->getUsedProducts(null, $product);
+			        $product = array_shift($associated_products);
+					// $conf = $this->_getAssociatedProductByAttributes($id,$one->options);
+					// $id = $conf->getEntityId();
+					// $product = $conf;
 					break;
 			}
 			try{
-				$params = new Varien_Object(array(
-	                 'product' => $id,
-	                 'qty' => min($one->count, $qty),
-	                 'options' => $options
-	            ));
-				$cart->addProduct($product, $params);
+				// $params = new Varien_Object(array(
+	   //               'product' => $id,
+	   //               'qty' => min($one->count, $qty),
+	   //               'options' => $options
+	   //          ));
+				// $cart->addProduct($product, $params);
+				$cart->addProduct($product);
 			}catch (Exception $e){
 				print_r($e->getMessage());
 				exit;

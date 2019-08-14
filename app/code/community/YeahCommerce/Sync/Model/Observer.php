@@ -177,10 +177,8 @@ class YeahCommerce_Sync_Model_Observer {
         curl_setopt($process, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($process, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($process, CURLOPT_SSL_VERIFYHOST, false);
-        var_dump($url);
         $return = curl_exec($process);
         $data = json_decode($return);
-        var_dump($data);
         curl_close($process);
         if ($data->id){
             return $data->id;
