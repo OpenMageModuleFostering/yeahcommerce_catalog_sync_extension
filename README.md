@@ -1,3 +1,5 @@
+
+
 ## Original Package Description
 
 Automatic synchronization of Magento product catalog with Yeah!Commerce service

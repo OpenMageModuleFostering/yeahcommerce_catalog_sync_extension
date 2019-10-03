@@ -1,5 +1,5 @@
 {
-    "name": "OpenMageModuleFostering\/YeahCommerce_Catalog_Sync_Extension",
+    "name": "openmage-module-fostering\/yeahcommerce_catalog_sync_extension",
     "type": "magento-module",
     "license": "GNU-General-Public-License-(GPL)",
     "homepage": "",
