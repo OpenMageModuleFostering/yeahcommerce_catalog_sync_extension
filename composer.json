@@ -1,16 +1,19 @@
 {
-    "name": "OpenMageModuleFostering/YeahCommerce_Catalog_Sync_Extension",
+    "name": "OpenMageModuleFostering\/YeahCommerce_Catalog_Sync_Extension",
     "type": "magento-module",
     "license": "GNU-General-Public-License-(GPL)",
     "homepage": "",
     "description": "Automatic synchronization of Magento product catalog with Yeah!Commerce service",
     "authors": [
-    {
-        "name": "Boris Udachin",
-        "email": "mail@yeahcommerce.com"
-    }
-],
+        {
+            "name": "Boris Udachin",
+            "email": "mail@yeahcommerce.com"
+        }
+    ],
     "suggest": {
-        "magento-hackathon/magento-composer-installer": "*"
-    }
+        "magento-hackathon\/magento-composer-installer": "*"
+    },
+    "keywords": [
+        "openmage-module"
+    ]
 }
